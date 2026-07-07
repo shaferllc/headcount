@@ -29,13 +29,48 @@
       this._host.style.cssText = 'display:inline-block;font-variant-numeric:tabular-nums;';
       this.appendChild(this._host);
       this._value = null;
-      this._poll();
-      var interval = Math.max(2, parseInt(this.getAttribute('interval'), 10) || 5) * 1000;
-      this._timer = setInterval(this._poll.bind(this), interval);
+      // Live push first; polling is the fallback (and the explicit mode via live="poll").
+      if (this.getAttribute('live') === 'poll' || typeof WebSocket === 'undefined') {
+        this._startPolling();
+      } else {
+        this._connect();
+      }
     }
 
     disconnectedCallback() {
       clearInterval(this._timer);
+      try { this._ws && this._ws.close(); } catch (e) {}
+    }
+
+    _connect() {
+      var endpoint = (this.getAttribute('endpoint') || SCRIPT_ORIGIN).replace(/\/$/, '');
+      var site = this.getAttribute('site');
+      if (!site || !endpoint) return;
+      var self = this;
+      try {
+        var ws = new WebSocket(endpoint.replace(/^http/, 'ws') + '/ws?site=' + encodeURIComponent(site));
+        this._ws = ws;
+        ws.onmessage = function (ev) {
+          try {
+            var data = JSON.parse(ev.data);
+            if (typeof data.count === 'number') self._render(data.count);
+          } catch (e) {}
+        };
+        ws.onerror = ws.onclose = function () {
+          if (self._ws !== ws) return; // already replaced
+          self._ws = null;
+          self._startPolling(); // graceful degrade; no WS retry this pageload
+        };
+      } catch (e) {
+        this._startPolling();
+      }
+    }
+
+    _startPolling() {
+      if (this._timer) return;
+      this._poll();
+      var interval = Math.max(2, parseInt(this.getAttribute('interval'), 10) || 5) * 1000;
+      this._timer = setInterval(this._poll.bind(this), interval);
     }
 
     async _poll() {

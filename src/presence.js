@@ -23,6 +23,7 @@ const REFRESH_MS = 30_000; // keepalive: re-flush unchanged visitors this often
 const ACTIVE_WINDOW_MS = 45_000; // "still pinging" cutoff (snippet pings every 15s)
 const EXPIRE_MS = 600_000; // drop visitors gone this long
 const FLUSH_BATCH_LIMIT = 500;
+const BROADCAST_WINDOW_S = 60; // liveness window for WebSocket count pushes
 
 export class Presence extends DurableObject {
   constructor(ctx, env) {
@@ -77,6 +78,73 @@ export class Presence extends DurableObject {
     if ((await this.ctx.storage.getAlarm()) === null) {
       await this.ctx.storage.setAlarm(Date.now() + FLUSH_MS);
     }
+
+    this.broadcastCount();
+  }
+
+  /**
+   * WebSocket live push: the worker forwards GET /ws upgrades here. Sockets
+   * use the hibernation API, so a thousand idle dashboards cost nothing; the
+   * current count is pushed on connect and whenever it changes.
+   */
+  async fetch(request) {
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return new Response('Expected WebSocket upgrade', { status: 426 });
+    }
+
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1]);
+
+    const { count } = await this.liveStats(BROADCAST_WINDOW_S);
+    try {
+      pair[1].send(JSON.stringify({ count }));
+    } catch {}
+
+    // Sockets need the alarm loop alive even when the site is empty, so the
+    // "count dropped to 0" push still goes out.
+    if ((await this.ctx.storage.getAlarm()) === null) {
+      await this.ctx.storage.setAlarm(Date.now() + FLUSH_MS);
+    }
+
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  webSocketMessage() {
+    // Clients don't talk; the socket is push-only.
+  }
+
+  webSocketClose(ws) {
+    try {
+      ws.close();
+    } catch {}
+  }
+
+  webSocketError(ws) {
+    try {
+      ws.close();
+    } catch {}
+  }
+
+  broadcastCount() {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) {
+      return;
+    }
+    const count = this.ctx.storage.sql
+      .exec('SELECT COUNT(*) AS c FROM visitors WHERE seen_ms >= ?', Date.now() - BROADCAST_WINDOW_S * 1000)
+      .one().c;
+    // _lastBroadcast is in-memory only; after hibernation it re-sends one
+    // unchanged count, which clients render idempotently. Harmless.
+    if (count === this._lastBroadcast) {
+      return;
+    }
+    this._lastBroadcast = count;
+    const message = JSON.stringify({ count });
+    for (const ws of sockets) {
+      try {
+        ws.send(message);
+      } catch {}
+    }
   }
 
   /**
@@ -121,13 +189,18 @@ export class Presence extends DurableObject {
       }
     }
 
+    this.broadcastCount();
+
     const remaining = this.ctx.storage.sql
       .exec('SELECT COUNT(*) AS c FROM visitors')
       .one().c;
-    if (remaining > 0) {
+    if (remaining > 0 || this.ctx.getWebSockets().length > 0) {
+      // Connected sockets keep the loop alive even when the site is empty, so
+      // the "count dropped to 0" push still goes out.
       await this.ctx.storage.setAlarm(now + FLUSH_MS);
     }
-    // Site is empty: let the alarm lapse — the next recordPing re-arms it.
+    // Site empty and nobody watching: let the alarm lapse — the next
+    // recordPing or WebSocket connect re-arms it.
   }
 
   async flushToWebhook(rows, now) {

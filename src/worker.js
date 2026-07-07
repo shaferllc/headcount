@@ -33,6 +33,8 @@ export default {
         return handlePingGif(request, url, env, ctx, cors);
       case '/live':
         return handleLive(request, url, env, cors);
+      case '/ws':
+        return handleWs(request, url, env, cors);
       default:
         return json({ error: 'Not found' }, 404, cors);
     }
@@ -104,6 +106,22 @@ async function handleLive(request, url, env, cors) {
     // collapses; the count only moves on a 10s-ish cadence anyway.
     'Cache-Control': 'public, max-age=3',
   });
+}
+
+async function handleWs(request, url, env, cors) {
+  if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+    return json({ error: 'Expected WebSocket upgrade' }, 426, cors);
+  }
+  const site = (url.searchParams.get('site') || '').trim();
+  if (site === '') {
+    return json({ error: 'site is required' }, 422, cors);
+  }
+  if (!siteAllowed(env, site)) {
+    return json({ error: 'Unknown site' }, 404, cors);
+  }
+
+  // The DO owns the socket; count pushes come from its ping/alarm paths.
+  return env.PRESENCE.getByName(site).fetch(request);
 }
 
 function normalizePing(src) {

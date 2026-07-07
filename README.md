@@ -4,6 +4,11 @@ Real-time concurrent-visitor counting for any website — running entirely on
 Cloudflare Workers + Durable Objects. No backend. No database server. No
 analytics suite. Deploy a worker, add a script tag, get a live count.
 
+![Live demo: the count rolls odometer-style as visitors arrive](docs/demo.gif)
+
+**[Live demo →](https://headcount.flat-thunder-531a.workers.dev/demo)** — open
+it in a few tabs and browsers; counts push over WebSocket the instant they change.
+
 ```
 ┌─ browser tabs ─────────┐      ┌─ Cloudflare edge ──────────────┐
 │ headcount.js           │      │ Worker (/ping /ping.gif /live) │
@@ -84,7 +89,10 @@ Snippet attributes: `data-site` (required), `data-endpoint`, `data-interval`
 (seconds, default 15), `data-idle` (seconds, default 120).
 
 Widget attributes: `site` (required), `endpoint`, `window` (seconds, default
-60), `interval` (poll seconds, default 5).
+60), `interval` (poll seconds, default 5), `live="poll"` to skip WebSocket.
+The widget connects over WebSocket by default — counts arrive the instant they
+change — and degrades to polling if the socket can't connect. Sockets use the
+Durable Object hibernation API, so idle dashboards cost nothing.
 
 ## Mirroring presence into your own database
 
@@ -114,6 +122,7 @@ next alarm; rows persist in SQLite, so a webhook outage loses nothing.
 | `/ping` | POST | Heartbeat: `{site, id, url, state?}`. Returns 202. |
 | `/ping.gif` | GET | Same, query-string + 1×1 GIF (blocker fallback). |
 | `/live` | GET | `?site=blog&window=60` → `{count, paths}`. |
+| `/ws` | GET (upgrade) | `?site=blog` → WebSocket; pushes `{count}` on connect and whenever it changes. |
 
 `state` is an opaque passthrough (≤16 chars) if you want to tag visitors
 (e.g. reading/writing) and segment on your side via the webhook.
@@ -129,8 +138,8 @@ including alarm-driven expiry and webhook delivery.
 
 ## Roadmap
 
-- WebSocket push from the Durable Object (the widget polls today)
 - Per-path live pages endpoint
+- Optional Analytics Engine binding for count history / sparklines
 - Turnstile-gated ping option for high-abuse environments
 
 ## Origin

@@ -76,6 +76,45 @@ describe('expiry', () => {
   });
 });
 
+describe('websocket push', () => {
+  it('sends a snapshot on connect and pushes count changes', async () => {
+    await ping('ws-site', 'v1', '/a');
+
+    const res = await SELF.fetch('https://hc.test/ws?site=ws-site', {
+      headers: { Upgrade: 'websocket' },
+    });
+    expect(res.status).toBe(101);
+    const ws = res.webSocket;
+    ws.accept();
+
+    const messages = [];
+    let notify;
+    ws.addEventListener('message', (ev) => {
+      messages.push(JSON.parse(ev.data));
+      notify?.();
+    });
+    const waitForMessage = (n) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`timed out waiting for message ${n}`)), 2000);
+      notify = () => {
+        if (messages.length >= n) {
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      notify();
+    });
+
+    await waitForMessage(1);
+    expect(messages[0]).toEqual({ count: 1 });
+
+    await ping('ws-site', 'v2', '/b');
+    await waitForMessage(2);
+    expect(messages[1]).toEqual({ count: 2 });
+
+    ws.close();
+  });
+});
+
 describe('webhook flush', () => {
   it('posts active visitors and clears dirty flags on success', async () => {
     await ping('hooked', 'v1', '/a', 'R');
