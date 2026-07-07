@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>headcount demo</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; color: #0f172a; }
+    .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 2rem; text-align: center; }
+    headcount-badge { font-size: 4rem; font-weight: 800; }
+    .label { color: #64748b; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .5rem; }
+    p { color: #475569; line-height: 1.6; }
+    code { background: #f1f5f9; padding: .1em .35em; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>headcount</h1>
+  <p>
+    This page is pinging the worker it was served from (site <code>demo</code>).
+    Open it in more tabs, browsers, or devices and watch the digits roll.
+    Idle for two minutes and you'll drop out of the count; move the mouse and you're back.
+  </p>
+  <div class="card">
+    <div class="label">Reading right now</div>
+    <headcount-badge site="demo" window="60"></headcount-badge>
+  </div>
+
+  <script src="/headcount.js" data-site="demo" data-interval="10" defer></script>
+  <script src="/widget.js" defer></script>
+</body>
+</html>

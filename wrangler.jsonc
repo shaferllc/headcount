@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "headcount",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-06-01",
+
+  // Static assets: the tracking snippet, the counter widget, and the demo page
+  // are served straight from ./public — same origin as the API.
+  "assets": { "directory": "./public" },
+
+  "durable_objects": {
+    "bindings": [{ "name": "PRESENCE", "class_name": "Presence" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Presence"] }],
+
+  "observability": { "enabled": true },
+
+  "vars": {
+    // Comma-separated allowlist of site names. Empty = accept any site value
+    // (fine when the worker runs on your own domain for your own sites).
+    "SITES": "",
+    // CORS origin for the ping/live endpoints. Lock down if you like.
+    "ALLOW_ORIGIN": "*",
+    // "false" hides per-path breakdowns from GET /live (count only).
+    "EXPOSE_PATHS": "true"
+    // Optional (set as secrets or vars):
+    //   WEBHOOK_URL    — POST presence deltas to your own backend
+    //   WEBHOOK_SECRET — HMAC-SHA256 key; sent as X-Headcount-Signature
+  }
+}
